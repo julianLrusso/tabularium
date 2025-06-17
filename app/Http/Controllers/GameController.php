@@ -21,27 +21,28 @@ class GameController extends Controller
     }
 
     public function searchGameByNameInRawg($name): array{
+        // Guardar más que solo el primero.
+        // Mostrar varios para solucionar el problema.
         $searchResponse = Http::get('https://api.rawg.io/api/games', [
             'key' => config('services.rawg.key'),
             'search' => $name,
+            'search_precise' => 1,
+            'page_size' => 20,
         ]);
 
         if (!$searchResponse->successful() || empty($searchResponse['results'])) {
-            return ['status' => 'error', 'message' => 'No se encontró el juego en RAWG'];
+            return ['status' => 'error', 'message' => 'No se encontraron juegos en RAWG'];
         }
 
-        $rawgGame = $searchResponse['results'][0];
-        $rawgId = $rawgGame['id'];
+        return ['status' => 'ok', 'results' => $searchResponse['results']];
+    }
 
-        $detailResponse = Http::get("https://api.rawg.io/api/games/{$rawgId}", [
+    protected function getGameDetailFromRawg($id): ?Response {
+        $response = Http::get("https://api.rawg.io/api/games/{$id}", [
             'key' => config('services.rawg.key'),
         ]);
 
-        if (!$detailResponse->successful()) {
-            return ['status' => 'error', 'message' => 'No se pudo obtener el detalle del juego'];
-        }
-
-        return ['status' => 'ok', 'data' => $detailResponse];
+        return $response->successful() ? $response : null;
     }
 
     public function createGame(Response $data) {
@@ -70,21 +71,43 @@ class GameController extends Controller
     public function findOrImportByName(Request $request)
     {
         $name = $request->input('name');
-        $game = $this->searchGameByName($name);
 
-        if ($game) {
-            return response()->json(['source' => 'local', 'game' => $game]);
+        $localGames = Game::where('name', 'like', '%' . $name . '%')->take(5)->get(
+            ['id', 'name', 'release_date', 'cover_url', 'platforms']
+        );
+        if ($localGames->count() > 0) {
+            return response()->json(['source' => 'local', 'games' => $localGames]);
         }
 
-        $detailResponse = $this->searchGameByNameInRawg($name);
-
-        if ($detailResponse['status'] === 'error'){
-            return response()->json($detailResponse, 500);
+        $rawgResponse = $this->searchGameByNameInRawg($name);
+        if ($rawgResponse['status'] === 'error') {
+            return response()->json($rawgResponse, 500);
         }
 
-        $data = $detailResponse['data'];
-        $game = $this->createGame($data);
+        $savedGames = collect();
+        foreach ($rawgResponse['results'] as $result) {
+            $existing = Game::where('rawg_id', $result['id'])->first();
+            if ($existing) {
+                $savedGames->push($existing);
+                continue;
+            }
 
-        return response()->json(['source' => 'rawg', 'game' => $game->load(['developers', 'publishers'])]);
+            $detail = $this->getGameDetailFromRawg($result['id']);
+            if (!$detail) continue;
+
+            $newGame = $this->createGame($detail);
+            $savedGames->push($newGame);
+        }
+
+        return response()->json([
+            'source' => 'rawg',
+            'games' => $savedGames->take(5)->map(fn($g) => [
+                'id' => $g->id,
+                'name' => $g->name,
+                'release_date' => $g->release_date,
+                'platforms' => $g->platforms,
+                'cover_url' => $g->cover_url,
+            ])->values()
+        ]);
     }
 }

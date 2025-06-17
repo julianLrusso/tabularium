@@ -29,8 +29,21 @@
             </div>
         </div>
 
-        <!-- Profile Icon -->
+
         @auth
+            <div>
+                <x-main-button>
+                    <x-slot:additionalClasses>px-4 py-2</x-slot:additionalClasses>
+                    <x-slot:hasIcon></x-slot:hasIcon>
+                    <x-slot:data>
+                        data-modal-target="create-log-modal"
+                        data-modal-toggle="create-log-modal"
+                    </x-slot:data>
+                    Crear registro
+                </x-main-button>
+            </div>
+
+            <!-- Profile Icon -->
             <div class="relative" id="userMenuWrapper">
                 <!-- Botón -->
                 <button id="userMenuButton"

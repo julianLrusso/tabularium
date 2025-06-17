@@ -12,10 +12,14 @@
 
 <!-- Navbar -->
 <x-navbar/>
-
 {{-- Contenido --}}
 {{ $slot }}
 
 @vite('resources/js/main.js')
+@auth()
+    @include('partials.create_log_modal')
+    @vite('resources/js/logform.js')
+@endauth
+<script src="https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.js"></script>
 </body>
 </html>
